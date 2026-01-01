@@ -1,0 +1,4 @@
+.venv/
+.quotes.db
+__pycache__/
+*.db*
