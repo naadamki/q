@@ -1,31 +1,100 @@
 from models import Session, Quote, Tag
 import json
+from datetime import datetime
+from sqlalchemy import text
+import re
+import unicodedata
 
 
-def migrate_tags_column_to_table():
+def clean_tag_name(tag_name: str) -> str:
     """
-    Migrate tags from quotes.tags_data column to tags table and quote_tags junction table.
+    Clean tag name by:
+    1. Converting to lowercase
+    2. Removing non-English characters
+    3. Removing punctuation and symbols
+    4. Removing extra whitespace
+    """
+    # Convert to lowercase
+    tag_name = tag_name.lower().strip()
     
-    This script:
-    1. Gets all quotes with tag data in the tags_data column
-    2. For each tag name, creates a Tag entry if it doesn't exist
-    3. Associates the quote with each tag via the quote_tags junction table
-    4. Optionally clears the old tags_data column
+    # Remove non-English characters using unicodedata
+    tag_name = ''.join(
+        c if ord(c) < 128 else '' 
+        for c in unicodedata.normalize('NFKD', tag_name)
+        if unicodedata.category(c) != 'Mn'
+    )
+    
+    # Remove punctuation and special characters, keep only alphanumeric, spaces, hyphens
+    tag_name = re.sub(r'[^a-z0-9\s\-]', '', tag_name)
+    
+    # Remove extra whitespace
+    tag_name = re.sub(r'\s+', ' ', tag_name).strip()
+    
+    return tag_name
+
+
+def migrate_tags_column_to_table_backwards(batch_size: int = 1000):
+    """
+    Optimized migration script that works backwards from the last quote.
+    Removes tag_list data after processing.
+    
+    Improvements:
+    1. Pre-loads all existing tags into memory (single query)
+    2. Processes quotes in reverse order (last to first)
+    3. Batches database commits (every 1000 quotes)
+    4. Uses bulk inserts for multiple tags at once
+    5. Adds index on tag names for faster lookups
+    6. Shows progress with ETA
+    7. Clears tag_list after processing
+    
+    Args:
+        batch_size: Number of quotes to process before committing (default 1000)
     """
     
     session = Session()
     
     try:
-        # Get all quotes
-        quotes = session.query(Quote).all()
+        print("Starting optimized backwards migration...")
+        print("=" * 60)
+        
+        # Step 1: Create index on tag name for faster lookups
+        print("Creating database index on tag names...")
+        try:
+            session.execute(text("CREATE INDEX IF NOT EXISTS idx_tag_name ON tags(name)"))
+            session.commit()
+        except:
+            pass  # Index might already exist
+        
+        # Step 2: Pre-load all existing tags into a dictionary (single query)
+        print("Loading existing tags into memory...")
+        existing_tags = {}
+        for tag in session.query(Tag).all():
+            existing_tags[tag.name.lower()] = tag
+        print(f"  ✓ Loaded {len(existing_tags)} existing tags")
+        
+        # Step 3: Get all quotes, ordered by ID descending (backwards)
+        quotes = session.query(Quote).order_by(Quote.id.desc()).all()
+        total_quotes = len(quotes)
+        print(f"  ✓ Loaded {total_quotes:,} quotes (processing in reverse order)")
+        print()
         
         tags_created = 0
         associations_created = 0
         skipped = 0
+        new_tags_buffer = {}  # Buffer for new tags not yet in DB
         
-        print(f"Starting migration for {len(quotes)} quotes...")
+        start_time = datetime.now()
         
-        for quote in quotes:
+        # Step 4: Process quotes in reverse order
+        for idx, quote in enumerate(quotes):
+            # Progress indicator
+            if (idx + 1) % 10000 == 0:
+                elapsed = (datetime.now() - start_time).total_seconds()
+                rate = (idx + 1) / elapsed
+                remaining = (total_quotes - idx - 1) / rate if rate > 0 else 0
+                print(f"Progress: {idx + 1:,}/{total_quotes:,} ({(idx+1)/total_quotes*100:.1f}%) - "
+                      f"ETA: {remaining/60:.1f} min")
+            
             # Check if quote has tag data
             if not quote.tag_list:
                 skipped += 1
@@ -35,14 +104,14 @@ def migrate_tags_column_to_table():
                 # Parse the JSON array of tag names
                 tag_names = json.loads(quote.tag_list)
             except (json.JSONDecodeError, TypeError):
-                print(f"⚠️  Skipped quote {quote.id}: Invalid JSON in tag_list")
                 skipped += 1
                 continue
             
             # Break down multi-word tags into single words
             single_words = set()
             for tag_name in tag_names:
-                tag_name = tag_name.strip().lower()
+                # Clean the tag name (remove non-English, punctuation, symbols)
+                tag_name = clean_tag_name(tag_name)
                 
                 if not tag_name:
                     continue
@@ -52,7 +121,7 @@ def migrate_tags_column_to_table():
                 for part in tag_name.split():
                     words.extend(part.split('-'))
                 
-                # Add all non-empty words to the set (automatically removes duplicates)
+                # Add all non-empty words to the set
                 single_words.update([w for w in words if w])
             
             # Process each single word as a tag
@@ -62,73 +131,71 @@ def migrate_tags_column_to_table():
                 if not tag_name:
                     continue
                 
-                # Check if tag already exists
-                tag = session.query(Tag).filter_by(name=tag_name).first()
-                
-                if not tag:
+                # Check if tag exists in memory (existing tags or newly created)
+                if tag_name in existing_tags:
+                    tag = existing_tags[tag_name]
+                elif tag_name in new_tags_buffer:
+                    tag = new_tags_buffer[tag_name]
+                else:
                     # Create new tag
                     tag = Tag(name=tag_name)
-                    session.add(tag)
+                    new_tags_buffer[tag_name] = tag
                     tags_created += 1
-                    print(f"  ✓ Created tag: '{tag_name}'")
                 
                 # Associate tag with quote if not already associated
                 if tag not in quote.tags:
                     quote.tags.append(tag)
                     associations_created += 1
+            
+            # Clear the tag_list after processing
+            quote.tag_list = None
+            
+            # Batch commit every N quotes
+            if (idx + 1) % batch_size == 0:
+                # Add buffered tags to session
+                for tag in new_tags_buffer.values():
+                    if tag.id is None:  # Only add if not already in session
+                        session.add(tag)
+                
+                session.commit()
+                
+                # Move buffered tags to existing tags dict
+                for tag_name, tag in new_tags_buffer.items():
+                    existing_tags[tag_name] = tag
+                new_tags_buffer.clear()
         
-        # Commit all changes
+        # Final commit for remaining data
+        print("\nFinalizing migration...")
+        for tag in new_tags_buffer.values():
+            if tag.id is None:
+                session.add(tag)
         session.commit()
         
-        print("\n" + "="*50)
+        # Step 5: Verify migration
+        total_tags = session.query(Tag).count()
+        total_associations = session.query(Quote).filter(Quote.tags.any()).count()
+        
+        elapsed = (datetime.now() - start_time).total_seconds()
+        
+        print("\n" + "=" * 60)
         print("Migration completed!")
-        print("="*50)
-        print(f"Tags created: {tags_created}")
-        print(f"Associations created: {associations_created}")
-        print(f"Quotes skipped (no tags): {skipped}")
-        print(f"Total quotes processed: {len(quotes) - skipped}")
+        print("=" * 60)
+        print(f"Time elapsed: {elapsed/60:.1f} minutes ({elapsed:.0f} seconds)")
+        print(f"Tags created: {tags_created:,}")
+        print(f"Associations created: {associations_created:,}")
+        print(f"Quotes skipped (no tags): {skipped:,}")
+        print(f"Quotes processed: {total_quotes - skipped:,}")
+        print(f"Total tags in database: {total_tags:,}")
+        print(f"Quotes with tags: {total_associations:,}")
+        print(f"Average time per quote: {elapsed/(total_quotes - skipped)*1000:.2f}ms")
         
         return True
         
     except Exception as e:
         session.rollback()
         print(f"\n❌ Error during migration: {str(e)}")
-        return False
-    
-    finally:
-        session.close()
-
-
-def migrate_tags_and_clear_column():
-    """
-    Same as migrate_tags_column_to_table() but also clears the old tags_data column after migration.
-    Use this only after verifying the migration worked correctly!
-    """
-    
-    session = Session()
-    
-    try:
-        # Run the migration first
-        success = migrate_tags_column_to_table()
-        
-        if not success:
-            print("Migration failed, not clearing old column")
-            return False
-        
-        # Clear the old tags_data column
-        session = Session()
-        quotes = session.query(Quote).all()
-        
-        for quote in quotes:
-            quote.tag_list = None
-        
-        session.commit()
-        print("\n✓ Cleared old tags_data column from all quotes")
-        return True
-        
-    except Exception as e:
-        session.rollback()
-        print(f"\n❌ Error clearing column: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
     
     finally:
@@ -143,33 +210,37 @@ def verify_migration():
     try:
         quotes = session.query(Quote).all()
         
-        print("\n" + "="*50)
+        print("\n" + "=" * 60)
         print("Migration Verification")
-        print("="*50)
+        print("=" * 60)
         
         total_tags = 0
         quotes_with_tags = 0
+        quotes_with_tag_list = 0
         
         for quote in quotes:
             if quote.tags:
                 quotes_with_tags += 1
                 total_tags += len(quote.tags)
-                tag_names = [tag.name for tag in quote.tags]
-                print(f"Quote {quote.id}: {tag_names}")
+            if quote.tag_list:
+                quotes_with_tag_list += 1
         
-        print("\n" + "-"*50)
-        print(f"Total quotes with tags: {quotes_with_tags}")
-        print(f"Total tag associations: {total_tags}")
+        print(f"Total quotes with tags: {quotes_with_tags:,}")
+        print(f"Total tag associations: {total_tags:,}")
+        print(f"Quotes with cleared tag_list: {len(quotes) - quotes_with_tag_list:,}")
+        print(f"Quotes still with tag_list data: {quotes_with_tag_list:,}")
         
         # Check for orphaned tags
         all_tags = session.query(Tag).all()
-        print(f"Total tags in database: {len(all_tags)}")
+        print(f"Total tags in database: {len(all_tags):,}")
         
         orphaned = [tag for tag in all_tags if len(tag.quotes) == 0 and 
                                                   len(tag.authors) == 0 and 
                                                   len(tag.users) == 0]
         if orphaned:
-            print(f"⚠️  Found {len(orphaned)} orphaned tags (not associated with anything)")
+            print(f"⚠️  Found {len(orphaned):,} orphaned tags (not associated with anything)")
+        else:
+            print(f"✓ No orphaned tags found")
         
         return True
         
@@ -182,16 +253,12 @@ def verify_migration():
 
 
 if __name__ == "__main__":
-    # Step 1: Run the migration
-    print("Step 1: Migrating tags from column to table...")
-    migrate_tags_column_to_table()
+    # Step 1: Run the optimized backwards migration
+    print("Step 1: Running optimized backwards migration...\n")
+    migrate_tags_column_to_table_backwards(batch_size=1000)
     
     # Step 2: Verify it worked
     print("\nStep 2: Verifying migration...")
     verify_migration()
-    
-    # Step 3: If everything looks good, uncomment below to clear the old column
-    # print("\nStep 3: Clearing old tags_data column...")
-    # migrate_tags_and_clear_column()
     
     print("\n✅ Migration script completed!")

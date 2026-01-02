@@ -47,12 +47,12 @@ class User(Base):
     __tablename__ = 'users'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    username: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=True)
 
     quotes: Mapped[List['Quote']] = relationship('Quote', secondary=user_quotes, back_populates='users')
     authors: Mapped[List['Author']] = relationship('Author', secondary=user_authors, back_populates='users')
@@ -73,13 +73,12 @@ class User(Base):
         """Get total number of tags"""
         return len(self.tags)
 
-    @property
     def all(self) -> List[Union['Quote', 'Author', 'Tag']]:
         """Get all related quotes, authors, and tags"""
         return list(self.quotes) + list(self.authors) + list(self.tags)
 
     def __repr__(self) -> str:
-        return f"<User(id={self.id}, username='{self.username}')>"
+        return f"<User(id={self.id}, name='{self.name}')>"
 
     def set_password(self, password: str) -> None:
         """Hash and set the user's password"""
@@ -98,6 +97,7 @@ class Author(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=True)
 
     quotes: Mapped[List['Quote']] = relationship('Quote', back_populates='author')
     users: Mapped[List['User']] = relationship('User', secondary=user_authors, back_populates='authors')
@@ -118,10 +118,9 @@ class Author(Base):
         """Get total number of tags"""
         return len(self.tags)
 
-    @property
-    def all(self) -> List[Union['Quote', 'Tag']]:
-        """Get all related quotes and tags"""
-        return list(self.quotes) + list(self.tags)
+    def all(self) -> List[Union['Quote', 'User', 'Tag']]:
+        """Get all related quotes, users,and tags"""
+        return list(self.quotes) + list(self.users) + list(self.tags)
 
     def __repr__(self) -> str:
         return f"<Author(id={self.id}, name='{self.name}')>"
@@ -141,7 +140,6 @@ class Category(Base):
         """Get how many quotes are in this category"""
         return len(self.quotes)
 
-    @property
     def all(self) -> List['Quote']:
         """Get all quotes in this category"""
         return self.quotes
@@ -161,9 +159,6 @@ class Category(Base):
         current.extend(keywords)
         self.keywords = json.dumps(current)
 
-    def set_keywords(self, keywords: List[str]) -> None:
-        """Replace all keywords with a new list"""
-        self.keywords = json.dumps(keywords)
 
 
 class Quote(Base):
@@ -173,6 +168,8 @@ class Quote(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     author_id: Mapped[int] = mapped_column(Integer, ForeignKey('authors.id'), nullable=False)
     tag_list: Mapped[Optional[str]] = mapped_column(Text) 
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=True)
+
 
     # Relationships
     author: Mapped['Author'] = relationship('Author', back_populates='quotes')
@@ -181,19 +178,24 @@ class Quote(Base):
     tags: Mapped[List['Tag']] = relationship('Tag', secondary=quote_tags, back_populates='quotes')
 
     @property
-    def user_count(self) -> int:
-        """Get how many users have favorited this quote"""
-        return len(self.users)
-
-    @property
     def category_count(self) -> int:
         """Get total number of categories"""
         return len(self.categories)
 
     @property
-    def all(self) -> List[Union['Category', 'Tag']]:
+    def user_count(self) -> int:
+        """Get how many users have favorited this quote"""
+        return len(self.users)
+
+    @property
+    def tag_count(self) -> int:
+        """Get total number of tags"""
+        return len(self.tags)
+
+    @property
+    def all(self) -> List[Union['Category', 'User', 'Tag']]:
         """Get all related categories and tags"""
-        return list(self.categories) + list(self.tags)
+        return list(self.categories) + list(self.users) + list(self.tags)
 
     def __repr__(self) -> str:
         author_name = self.author.name if self.author else "Unknown"
@@ -209,6 +211,7 @@ class Tag(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=True)
     
     # Polymorphic relationships - tag can be applied to many of each type
     quotes: Mapped[List['Quote']] = relationship('Quote', secondary=quote_tags, back_populates='tags')
