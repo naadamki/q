@@ -1,0 +1,80 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Session class(manages the session, starts the database connection)
+
+model classes (Author, Quote, User, Tag, Category...)
+    Focuses on attributes and relations (name, author_id, text, tags, categories, etc...). Not a lot of functions in these classes.
+        author.name quote.text user.tags
+
+Repo classes (Repo class that is inherited by AuthorRepo, QuoteRepo, UserRepo, TagRepo, CategoryRepo...)
+    Focuses on the basic crud operations (add, update, remove, get)
+        quotes.add(quote) authors.update(author) tags.remove(tag) authors.get(1)
+
+    With get 
+
+
+
+
+
+    I do not know how to handle the table connection relationships. Perhaps give me options before you move forward. The functions should be sure to remove the entries in the db. Whether a tag is removed from a user.tags or a user is removed from tag.users. 
+
+    I think add_/remove_[tag|user|quote|author|category] type functions that throw errors if the object does not have a tags or users or authors or quotes or category attribute. Perhaps keeping the add_category/remove_category function on the QuoteRepo and having an exception in the Repo class. I would prefer the functions that are within most of the repos be inherited with exceptions drawn rather than add_tag/remove_tag be duplicated in the author, quote, user repos. Same for add/remove quote/author/user, in main repo and inherited with exception for the category. 
+        users.get(1).add_tag(1) authors.get().remove_tag() author.add_tag()
+
+    This idea also applies to the count_quotes or count_users type functions and the all_users or all_tags type functions. I would rather a common function that can be inherited with exceptions considered in the repo class rather than duplicate functions in the classes. 
+        users.get(1).count_tags() authors.get().all_users user.count_tags
+
+    Tell me what you think. Throw ideas by and your suggestions. 
+
+    Maybe an sqlite repo that has the sqlite specific functions that inherits from (inherits to?) the abstract Repo class and the Repo classes inherit from it, or I don not know how you could make it work where you just change the db specific repo depending upon the db type and it all still function.
+
+Edit and Create class
+    Edits existing objects or creates new objects with persistance. You can call the editor, specify the type, choose edit or create, then specify which object (if edit) and specify the attributes. I don not know if this would involve editing the model classes to have more functions or self attributes or __init__ functions with parameters.
+        editor.create_user(name="", email=""), editor.edit(author, name=""), editor.create_tag(name="")
+
+Query class()
+    Queries the database. Preferabbly using methods that will pull say author/tag/category info with the query to make fewer queries. 
+    I'd like you to be able to call the class, specify whether you are searching for quotes or authors then perform a basic text search (search.quotes(text) search.authors(name))
+    Query by determined specifications by calling the class, specifying the type, then getting 
+        random quotes (search.quotes.random(limit))
+        most_saved authors or quotes (search.quotes.most_saved(limit) search.authors.most_saved(limit))
+        most_quoted author (search.authors.most_quoted(limit))
+    Query by multiple specifications, a more advanced type of quote search
+        search.quotes.advanced(text='', author='', tags=['',''], categories=[''], match_all, limit)
+
+
+DataBaseManager class
+    It is used in the command line and app to do specific things with the database. It utilizes the Session class, Repo classes, Search class and Editor class to string together commands.
+
+    db.users.get(1) db.users.update(1) db.quotes.delete(1)
+    db.users.get(1).add_tag(1) db.quotes.get(1).remove_category(1) db.authors.get(1).remove_tag(1)
+
+    IF possible db.users.get(1).edit(name='', email='') or db.authors.create(name='') type functions being front ends for editor.users.edit(1, name='', email='') or editor.authors.create(name='')
+    IF possible db.quotes.search('') or db.authors.search() type functions being front end for search.quotes('') or search.authors() or db.quotes.random(limit) type functions being front end for search.quotes.random(limit) type functions
+
+
+
+
+
+
+

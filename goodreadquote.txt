@@ -1,0 +1,99 @@
+
+
+
+
+categories = [{"category":"Anxiety","keywords":["anxiety", "anxious", "worry", "stress", "nervous", "tension", "unease", "apprehension"]},{"category":"Change","keywords":["change", "transform", "evolve", "transition", "shift", "adapt", "metamorphosis", "revolution", "reform"]},{"category":"Choice","keywords":["choice", "decision", "choose", "select", "option", "alternative", "free will", "decide", "pick"]},{"category":"Confidence","keywords":["confidence", "self-assured", "belief", "trust", "conviction", "certainty", "self-esteem", "assurance"]},{"category":"Courage","keywords":["courage", "brave", "bravery", "fearless", "bold", "valor", "heroic", "daring", "gallant"]},{"category":"Death","keywords":["death", "mortality", "dying", "mortal", "end", "demise", "passing", "eternal", "perish"]},{"category":"Dreams","keywords":["dream", "aspiration", "vision", "ambition", "goal", "wish", "imagine", "fantasy"]},{"category":"Failure","keywords":["failure", "fail", "defeat", "mistake", "error", "setback", "unsuccessful", "loss", "stumble"]},{"category":"Fairness","keywords":["fairness", "justice", "equity", "impartial", "equal", "fair", "right", "just", "equality"]},{"category":"Fear","keywords":["fear", "afraid", "scared", "frightened", "terror", "dread", "phobia", "panic", "alarmed"]},{"category":"Forgiveness","keywords":["forgiveness", "forgive", "pardon", "mercy", "absolve", "reconcile", "let go", "excuse"]},{"category":"Freedom","keywords":["freedom", "liberty", "free", "independence", "autonomy", "emancipation", "liberation", "release"]},{"category":"Future","keywords":["future", "tomorrow", "ahead", "coming", "prospect", "forthcoming", "destiny", "next"]},{"category":"Happiness","keywords":["happiness", "happy", "joy", "delight", "pleasure", "bliss", "contentment", "cheerful", "merry"]},{"category":"Inspiration","keywords":["inspiration", "inspire", "motivate", "encourage", "uplift", "stimulate", "spark", "empower"]},{"category":"Kindness","keywords":["kindness", "kind", "compassion", "gentle", "caring", "benevolent", "generous", "thoughtful", "tender"]},{"category":"Leadership","keywords":["leadership", "leader", "guide", "influence", "command", "direct", "manage", "inspire", "authority"]},{"category":"Life","keywords":["life", "living", "live", "existence", "alive", "vital", "being", "experience", "journey", "exist"]},{"category":"Love","keywords":["love", "affection", "devotion", "passion", "adore", "cherish", "compassion", "care", "romance"]},{"category":"Pain","keywords":["pain", "suffering", "hurt", "ache", "agony", "anguish", "torment", "sorrow", "grief"]},{"category":"Past","keywords":["past", "history", "yesterday", "former", "previous", "bygone", "memory", "nostalgia", "ancient"]},{"category":"Success","keywords":["success", "succeed", "achievement", "accomplish", "triumph", "victory", "prosper", "win", "excel"]},{"category":"Time","keywords":["time", "moment", "hour", "clock", "duration", "temporal", "era", "age", "present", "now", "today"]},{"category":"Truth","keywords":["truth", "true", "honest", "reality", "genuine", "authentic", "fact", "verity", "honesty"]},{"category":"Work","keywords":["work", "labor", "effort", "job", "career", "employment", "task", "occupation", "profession"]},{"category":"Action","keywords":["action", "act", "do", "doing", "initiative", "momentum", "execute", "move", "step"]},{"category":"Age","keywords":["age", "aging", "old", "young", "youth", "elderly", "maturity", "generation", "lifetime"]},{"category":"Character","keywords":["character", "integrity", "virtue", "honor", "moral", "ethics", "principle", "values", "dignity", "humility", "humble", "modest", "modesty", "meek", "unpretentious"]},{"category":"Friendship","keywords":["friendship", "friend", "companion", "camaraderie", "fellowship", "bond", "ally", "brotherhood"]},{"category":"Gratitude","keywords":["gratitude", "grateful", "thankful", "appreciation", "thanks", "acknowledge", "blessed", "appreciate"]},{"category":"Growth","keywords":["growth", "grow", "develop", "learning", "learn", "improvement", "progress", "maturation", "evolve"]},{"category":"Hope","keywords":["hope", "hopeful", "optimism", "optimistic", "expectation", "anticipation", "faith", "believe"]},{"category":"Knowledge","keywords":["knowledge", "wisdom", "wise", "understanding", "insight", "enlightenment", "intelligence", "learn"]},{"category":"Opportunity","keywords":["opportunity", "chance", "possibilities", "opening", "occasion", "prospect", "potential", "door"]},{"category":"Patience","keywords":["patience", "patient", "wait", "waiting", "endurance", "tolerance", "perseverance", "calm"]},{"category":"Perseverance","keywords":["perseverance", "persist", "persistence", "determination", "tenacity", "grit", "endure", "steadfast"]},{"category":"Power","keywords":["power", "strength", "influence", "control", "authority", "force", "might", "dominance", "potent"]},{"category":"Purpose","keywords":["purpose", "meaning", "calling", "reason", "mission", "intention", "aim", "destiny", "significance"]},{"category":"Responsibility","keywords":["responsibility", "responsible", "duty", "obligation", "accountability", "liable", "commitment"]},{"category":"Solitude","keywords":["solitude", "alone", "isolation", "lonely", "loneliness", "independence", "solitary", "seclusion"]}]
+
+
+
+
+
+
+
+def process_quote(quote: dict):
+	if quote['quote'] in db.quotes.all():
+		return
+	else:
+		db.authors.by_name(quote['author'])
+
+
+
+
+
+class ProcessQuotes:
+	def __init__(self, quote):
+		self.author = quote['author']
+		self.text = quote['quote']
+		self.source = quote['book']
+
+	def duplicate_check(self):
+		if self.text in db.quotes.all():
+			return True
+		else:
+			return False
+		
+	def get_author(self):
+		if db.authors.by_name(self.author) == None:
+			return self.author
+		
+
+
+
+
+
+
+
+pq = ProcessQuotes(quote)
+
+pq.duplicate_check()
+
+
+pq.get_author()
+
+
+
+
+
+
+def process_quote(self, quote: str):
+	new_quote_categories = []
+	new_tag_names = []
+	categories = self.db.categories.all()
+	for cat in categories:
+		for keyword in cat.list_keywords():
+			if keyword in quote:
+				new_quote_categories.append(cat.id)
+				new_tag_names.append(keyword)
+
+
+
+
+
+
+
+
+quote_group = quote.quote(keyword, limit=1000)
+
+
+
+
+
+qb = db.quote_builder()
+
+qb.author_name = ""
+qb.text = ""
+qb.categories = new_quote_categories
+qb.tag_names = new_tag_names
+
+
+
+
+
+new_quote_categories = []
+new_tag_names = []
+categories = db.categories.all()
+for cat in categories:
+	for keyword in cat.list_keywords():
+		if keyword in quote:
+			new_quote_categories.append(cat.id)
+			new_tag_names.append(keyword)

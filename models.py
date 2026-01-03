@@ -42,8 +42,18 @@ user_tags = Table('user_tags', Base.metadata,
     Column('tag_id', Integer, ForeignKey('tags.id')),
 )
 
+class CountMixin:
+    """Mixin to add count methods to models that have relationships"""
+    
+    def count(self, relationship_name: str) -> int:
+        if hasattr(self, relationship_name):
+            relationship = getattr(self, relationship_name)
+            return len(relationship) if relationship else 0
+        else:
+            raise AttributeError(f"{self.__class__.__name__} has no relationship '{relationship_name}'")
+        
 
-class User(Base):
+class User(Base, CountMixin):
     __tablename__ = 'users'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -54,28 +64,9 @@ class User(Base):
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime)
     needs_review: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    quotes: Mapped[List['Quote']] = relationship('Quote', secondary=user_quotes, back_populates='users')
-    authors: Mapped[List['Author']] = relationship('Author', secondary=user_authors, back_populates='users')
-    tags: Mapped[List['Tag']] = relationship('Tag', secondary=user_tags, back_populates='users')
-
-    @property
-    def quote_count(self) -> int:
-        """Get total number of favorite quotes"""
-        return len(self.quotes)
-
-    @property
-    def author_count(self) -> int:
-        """Get total number of favorite authors"""
-        return len(self.authors)
-
-    @property
-    def tag_count(self) -> int:
-        """Get total number of tags"""
-        return len(self.tags)
-
-    def all(self) -> List[Union['Quote', 'Author', 'Tag']]:
-        """Get all related quotes, authors, and tags"""
-        return list(self.quotes) + list(self.authors) + list(self.tags)
+    quotes: Mapped[List['Quote']] = relationship('Quote', secondary=user_quotes, back_populates='users', cascade='all, delete')
+    authors: Mapped[List['Author']] = relationship('Author', secondary=user_authors, back_populates='users', cascade='all, delete')
+    tags: Mapped[List['Tag']] = relationship('Tag', secondary=user_tags, back_populates='users', cascade='all, delete')
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, name='{self.name}')>"
@@ -92,7 +83,7 @@ class User(Base):
 
 
 
-class Author(Base):
+class Author(Base, CountMixin):
     __tablename__ = 'authors'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -102,47 +93,19 @@ class Author(Base):
     quotes: Mapped[List['Quote']] = relationship('Quote', back_populates='author')
     users: Mapped[List['User']] = relationship('User', secondary=user_authors, back_populates='authors')
     tags: Mapped[List['Tag']] = relationship('Tag', secondary=author_tags, back_populates='authors')
-    
-    @property
-    def quote_count(self) -> int:
-        """Get how many quotes this author has"""
-        return len(self.quotes)
-
-    @property
-    def user_count(self) -> int:
-        """Get how many users have this author"""
-        return len(self.users)
-
-    @property
-    def tag_count(self) -> int:
-        """Get total number of tags"""
-        return len(self.tags)
-
-    def all(self) -> List[Union['Quote', 'User', 'Tag']]:
-        """Get all related quotes, users,and tags"""
-        return list(self.quotes) + list(self.users) + list(self.tags)
 
     def __repr__(self) -> str:
         return f"<Author(id={self.id}, name='{self.name}')>"
 
 
-class Category(Base):
+class Category(Base, CountMixin):
     __tablename__ = 'categories'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     keywords: Mapped[Optional[str]] = mapped_column(Text)  # Stores JSON array
 
-    quotes: Mapped[List['Quote']] = relationship('Quote', secondary=quote_categories, back_populates='categories')
-
-    @property
-    def quote_count(self) -> int:
-        """Get how many quotes are in this category"""
-        return len(self.quotes)
-
-    def all(self) -> List['Quote']:
-        """Get all quotes in this category"""
-        return self.quotes
+    quotes: Mapped[List['Quote']] = relationship('Quote', secondary=quote_categories, back_populates='categories', cascade='all, delete')
 
     def __repr__(self) -> str:
         return f"<Category(id={self.id}, name='{self.name}')>"
@@ -161,41 +124,21 @@ class Category(Base):
 
 
 
-class Quote(Base):
+class Quote(Base, CountMixin):
     __tablename__ = 'quotes'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    author_id: Mapped[int] = mapped_column(Integer, ForeignKey('authors.id'), nullable=False)
-    tag_list: Mapped[Optional[str]] = mapped_column(Text) 
+    author_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('authors.id'), nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(String(300))
     needs_review: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
     # Relationships
     author: Mapped['Author'] = relationship('Author', back_populates='quotes')
     categories: Mapped[List['Category']] = relationship('Category', secondary=quote_categories, back_populates='quotes')
-    users: Mapped[List['User']] = relationship('User', secondary=user_quotes, back_populates='quotes')
-    tags: Mapped[List['Tag']] = relationship('Tag', secondary=quote_tags, back_populates='quotes')
-
-    @property
-    def category_count(self) -> int:
-        """Get total number of categories"""
-        return len(self.categories)
-
-    @property
-    def user_count(self) -> int:
-        """Get how many users have favorited this quote"""
-        return len(self.users)
-
-    @property
-    def tag_count(self) -> int:
-        """Get total number of tags"""
-        return len(self.tags)
-
-    @property
-    def all(self) -> List[Union['Category', 'User', 'Tag']]:
-        """Get all related categories and tags"""
-        return list(self.categories) + list(self.users) + list(self.tags)
+    users: Mapped[List['User']] = relationship('User', secondary=user_quotes, back_populates='quotes', cascade='all, delete')
+    tags: Mapped[List['Tag']] = relationship('Tag', secondary=quote_tags, back_populates='quotes', cascade='all, delete')
 
     def __repr__(self) -> str:
         author_name = self.author.name if self.author else "Unknown"
@@ -205,7 +148,7 @@ class Quote(Base):
 
 
 
-class Tag(Base):
+class Tag(Base, CountMixin):
     __tablename__ = 'tags'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -214,34 +157,9 @@ class Tag(Base):
     needs_review: Mapped[bool] = mapped_column(Boolean, default=True)
     
     # Polymorphic relationships - tag can be applied to many of each type
-    quotes: Mapped[List['Quote']] = relationship('Quote', secondary=quote_tags, back_populates='tags')
-    authors: Mapped[List['Author']] = relationship('Author', secondary=author_tags, back_populates='tags')
-    users: Mapped[List['User']] = relationship('User', secondary=user_tags, back_populates='tags')
-
-    @property 
-    def quote_count(self) -> int:
-        """Get total number of quotes"""
-        return len(self.quotes)
-
-    @property
-    def author_count(self) -> int:
-        """Get total number of authors"""
-        return len(self.authors)
-
-    @property
-    def user_count(self) -> int:
-        """Get total number of users"""
-        return len(self.users)
-
-    @property
-    def total_count(self) -> int:
-        """Get total number of items this tag is applied to"""
-        return self.quote_count + self.author_count + self.user_count
-
-    @property
-    def all(self) -> List[Union['Quote', 'Author', 'User']]:
-        """Get all items (quotes, authors, users) this tag is applied to"""
-        return list(self.quotes) + list(self.authors) + list(self.users)
+    quotes: Mapped[List['Quote']] = relationship('Quote', secondary=quote_tags, back_populates='tags', cascade='all, delete')
+    authors: Mapped[List['Author']] = relationship('Author', secondary=author_tags, back_populates='tags', cascade='all, delete')
+    users: Mapped[List['User']] = relationship('User', secondary=user_tags, back_populates='tags', cascade='all, delete')
 
     def __repr__(self) -> str:
         return f"<Tag(id={self.id}, name='{self.name}')>"
